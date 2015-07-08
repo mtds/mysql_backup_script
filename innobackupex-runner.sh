@@ -35,11 +35,14 @@ INNOBACKUPEXBIN=innobackupex
 INNOBACKUPEXBINCMD=/usr/bin/$INNOBACKUPEXBIN
 TMPFILE="/tmp/innobackupex-runner.$$.tmp"
 MYSQL=/usr/bin/mysql
+MYCNF=/etc/mysql/my.cnf
+CNFAUTH=/etc/mysql/debian.cnf
 MYSQLADMIN=/usr/bin/mysqladmin
 FULLBACKUPLIFE=604800 # Lifetime of the latest full backup in seconds
 KEEP=1 # Number of full backups (and its incrementals) to keep
 SCRIPTNAME=$(basename "$0")
 LOGFILE=/var/log/innobackup.log
+INTERACTIVE=false # used only when credentials are provided on the command line
 
 # Grab start time
 STARTED_AT=`/bin/date +%s`
@@ -49,7 +52,7 @@ STARTED_AT=`/bin/date +%s`
 ##################################
 usage() {
   cat <<EOF
-Usage: $SCRIPTNAME [-d backdir] [-f config] [-g group] [-e] [-a /path/auth.cnf] | ([-u username] [-p password]) [-H host] [-P port] [-S socket] [-v]
+  Usage: $SCRIPTNAME [-d backdir] [-f config.cnf] [-g group] [-a auth.cnf] | -i ([-u username] [-p password]) [-H host] [-P port] [-S socket]) [-v]
   -d  Directory used to store database backup
   -f  Path to my.cnf database config file
   -g  Group to read from the config file
@@ -58,8 +61,8 @@ Usage: $SCRIPTNAME [-d backdir] [-f config] [-g group] [-e] [-a /path/auth.cnf] 
   -H  Host used when connecting to the database
   -P  Port number used when connecting to the database
   -S  Socket used when connecting to the database
-  -e  Use an external config files for the credentials
-  -a  Path of a CNF file with admin credentials (by default /etc/mysql/debian.cnf is used)
+  -i  Username/Password will be provided on the cmd line
+  -a  Path of a CNF file containing admin credentials
   -v  Verbose mode: print more output messages
   -h  Display basic help
 EOF
@@ -67,8 +70,183 @@ EOF
 }
 
 
-# Parse parameters
-while getopts ":d:f:g:a:u:p:H:P:S:evh" opt; do
+# Display a message or redirect it to the log file:
+log_msg () {
+  if [ "$VERBOSE" = true ] ; then
+    echo "$1"
+  else
+    echo `/bin/date +%b' '%d' '%H:%m:%S` "$1" >> $LOGFILE
+  fi
+}
+
+
+# Extract MySQL credentials (user/password) from a CNF file:
+read_credentials () {
+  # Source the parser:
+  . /opt/scripts/read_ini.sh
+
+  # Call the parser function over the MySQL cnf file:
+  read_ini -p mysqlCnf $CNFAUTH
+
+  # Concatenate the parameters for innobackupex:
+  USEROPTIONS="--user=$mysqlCnf__client__user --password=$mysqlCnf__client__password"
+}
+
+
+# Check if the option arguments provided are correct:
+check_options() {
+
+  # Verify if the backup directory is provided/available/writable:
+  if [ -z "$BACKUPDIR" ]; then
+    log_msg "ERROR: Backup directory is required. For help, type: $SCRIPTNAME -h."
+    exit 1
+  fi
+
+  if [ ! -d $BACKUPDIR ]; then
+    log_msg "ERROR: Backup destination folder $BACKUPDIR does not exist."
+    exit 1
+  fi
+
+  if [ ! -w "$BACKUPDIR" ]; then
+    log_msg "ERROR: $BACKUPDIR is not writable by the UID used to launch the script."
+    exit 1
+  fi
+
+  # Used by innonackupex: this option accepts a string argument that specifies the 
+  # group which should be read from the configuration file. This is needed if you 
+  # use mysqld_multi. This can also be used to indicate groups other than mysqld 
+  # and xtrabackup.
+  if [ ! -z "$MYGROUP" ]; then DEFGROUP="--defaults-group=$MYGROUP"; fi
+
+  # If username and password are provided with the '-u' and '-p' options on the cmd line:
+  if [ "$INTERACTIVE" = true ]; then
+     if [ -z "$MYUSER"]; then
+       log_msg "Database username is required. For help, type: $SCRIPTNAME -h"
+       exit 1
+     else
+       # Concatenate parameters into innobackupex ones:
+       USEROPTIONS="--user=$MYUSER"
+       if [ ! -z "$MYPASSWD" ]; then USEROPTIONS="$USEROPTIONS --password=$MYPASSWD"; fi
+     fi
+   else
+    read_credentials # We'll get MySQL credentials from a CNF file.
+  fi
+
+  # Connection parameters: if none of the following are provided the script we'll use
+  # the ones that comes from /etc/mysql/my.cnf.
+  if [ ! -z "$MYHOST" ]; then USEROPTIONS="$USEROPTIONS --host=$MYHOST"; fi
+  if [ ! -z "$MYPORT" ]; then USEROPTIONS="$USEROPTIONS --port=$MYPORT"; fi
+  if [ ! -z "$MYSOCKET" ]; then USEROPTIONS="$USEROPTIONS --socket=$MYSOCKET"; fi
+}
+
+
+# Execute the backup operations:
+do_backup() {
+
+  # Full and incremental backups directories
+  FULLBACKUPDIR=$BACKUPDIR/full
+  INCRBACKUPDIR=$BACKUPDIR/incr
+  
+  # Check options before proceeding
+  if [ ! -x $INNOBACKUPEXBINCMD ]; then
+    log_msg "$INNOBACKUPEXBINCMD does not exist."
+    exit 1
+  fi
+  
+  if [ -z "`$MYSQLADMIN $USEROPTIONS status | /bin/grep 'Uptime'`" ] ; then
+    log_msg "HALTED: MySQL does not appear to be running."
+    exit 1
+  fi
+  
+  if ! `echo 'exit' | $MYSQL -s $USEROPTIONS` ; then
+    log_msg "HALTED: Supplied mysql username or password appears to be incorrect (not copied here for security, see script)."
+    exit 1
+  fi
+
+  if [ "$VERBOSE" = true ] ; then
+    # Some info output
+    echo "----------------------------"
+    echo
+    echo "$SCRIPTNAME: MySQL backup script"
+    echo "started: `/bin/date`"
+    echo
+  else
+    log_msg "$SCRIPTNAME: backup started"
+  fi
+  
+  # Create full and incr backup directories if they not exist.
+  /bin/mkdir -p $FULLBACKUPDIR
+  /bin/mkdir -p $INCRBACKUPDIR
+  
+  # Find latest full backup:
+  LATEST_FULL=`/usr/bin/find $FULLBACKUPDIR -mindepth 1 -maxdepth 1 -type d -printf "%P\n" | /usr/bin/sort -nr | /usr/bin/head -1`
+  
+  # Get last modification time of the latest backup:
+  LATEST_FULL_CREATED_AT=`/usr/bin/stat -c %Y $FULLBACKUPDIR/$LATEST_FULL`
+  
+  # Run an incremental backup if latest full is still valid. Otherwise, run a new full one.
+  if [ "$LATEST_FULL" -a `expr $LATEST_FULL_CREATED_AT + $FULLBACKUPLIFE + 5` -ge $STARTED_AT ] ; then
+    # Create incremental backups dir if not exists.
+    TMPINCRDIR=$INCRBACKUPDIR/$LATEST_FULL
+    /bin/mkdir -p $TMPINCRDIR
+    
+    # Find latest incremental backup.
+    LATEST_INCR=`/usr/bin/find $TMPINCRDIR -mindepth 1 -maxdepth 1 -type d | /usr/bin/sort -nr | /usr/bin/head -1`
+    
+    # If this is the first incremental, use the full as base. Otherwise, use the latest incremental as base.
+    if [ ! $LATEST_INCR ] ; then
+      INCRBASEDIR=$FULLBACKUPDIR/$LATEST_FULL
+    else
+      INCRBASEDIR=$LATEST_INCR
+    fi
+    
+    log_msg "Running new incremental backup using $INCRBASEDIR as base."
+    $INNOBACKUPEXBINCMD --defaults-file=$MYCNF $DEFGROUP $USEROPTIONS --incremental $TMPINCRDIR --incremental-basedir $INCRBASEDIR > $TMPFILE 2>&1
+  else
+    log_msg "Running new full backup."
+    $INNOBACKUPEXBINCMD --defaults-file=$MYCNF $DEFGROUP $USEROPTIONS $FULLBACKUPDIR > $TMPFILE 2>&1
+  fi
+  
+  if [ -z "`/usr/bin/tail -1 $TMPFILE | /bin/grep 'completed OK!'`" ] ; then
+    if [ "$VERBOSE" = true ] ; then
+      echo "$INNOBACKUPEXBIN failed:"; echo
+      echo "---------- ERROR OUTPUT from $INNOBACKUPEXBIN ----------"
+      /bin/cat $TMPFILE
+      /bin/rm -f $TMPFILE
+    else
+      log_msg "ERROR: the backup procedure has failed. More details on: $TMPFILE"
+    fi
+    exit 1
+  fi
+  
+  THISBACKUP=`/usr/bin/awk -- "/Backup created in directory/ { split( \\\$0, p, \"'\" ) ; print p[2] }" $TMPFILE`
+  /bin/rm -f $TMPFILE
+  
+  log_msg "Databases backed up successfully to: $THISBACKUP"
+  
+  # Cleanup
+  log_msg "Cleanup. Keeping only $KEEP full backups and its incrementals."
+  
+  AGE=$(($FULLBACKUPLIFE * $KEEP / 60))
+
+  # Add the 'echo' only if VERBOSE is true:
+  /usr/bin/find $FULLBACKUPDIR -maxdepth 1 -type d -mmin +$AGE -execdir echo "removing: "$FULLBACKUPDIR/{} \; -execdir rm -rf $FULLBACKUPDIR/{} \; -execdir echo "removing: "$INCRBACKUPDIR/{} \; -execdir rm -rf $INCRBACKUPDIR/{} \;
+  
+  log_msg "Backup completed."
+}
+
+#
+# Main
+#
+
+# Run the backup script as ROOT:
+if [ "$EUID" -ne 0 ]; then 
+  echo "Please run $SCRIPTNAME as root."
+  exit 1
+fi
+
+# Parse cmd line parameters:
+while getopts ":d:f:g:a:u:p:H:P:S:ivh" opt; do
   case $opt in
     d )  BACKUPDIR=$OPTARG ;;
     f )  MYCNF=$OPTARG ;;
@@ -78,7 +256,7 @@ while getopts ":d:f:g:a:u:p:H:P:S:evh" opt; do
     H )  MYHOST=$OPTARG ;;
     P )  MYPORT=$OPTARG ;;
     S )  MYSOCKET=$OPTARG ;;
-    e )  EXTCNF=true ;;
+    i )  INTERACTIVE=true ;;
     a )  CNFAUTH=$OPTARG ;;
     v )  VERBOSE=true ;;
     h )  usage ;;
@@ -91,154 +269,8 @@ while getopts ":d:f:g:a:u:p:H:P:S:evh" opt; do
   esac
 done
 
-# Display a message or redirect it to the log file:
-log_msg () {
-  if [ "$VERBOSE" = true ] ; then
-    echo "$1"
-  else
-    echo `/bin/date +%b' '%d' '%H:%m:%S` "$1" >> $LOGFILE
-  fi
-}
+check_options
 
-# Check required parameters
-if [ -z "$BACKUPDIR" ]; then
-  log_msg "Backup directory is required. For help, type: $SCRIPTNAME -h"
-  exit 1
-fi
-
-if [ -z "$MYUSER" ] && [ -z "$EXTCNF" ]; then
-  log_msg "Database username is required. For help, type: $SCRIPTNAME -h"
-  exit 1
-fi
-
-if [ -z "$MYCNF" ]; then MYCNF=/etc/mysql/my.cnf; fi
-if [ ! -z "$MYGROUP" ]; then DEFGROUP="--defaults-group=$MYGROUP"; fi
-
-if [ "$EXTCNF" = true ] ; then
-
-#
-# CHECK ME:
-#
-#	- Scripts installation directory
-#
-
-  # Source the parser:
-  . /opt/scripts/read_ini.sh
-
-  # By default we'll use the Debian sys maintainer user for the backup operations:
-  if [ -z "$CNFAUTH" ]; then CNFAUTH=/etc/mysql/debian.cnf; fi
-
-  # Call the parser function over the MySQL cnf file:
-  read_ini -p mysqlCnf $CNFAUTH
-
-  # Concatenate the parameters for innobackupex:
-  USEROPTIONS="--user=$mysqlCnf__client__user --password=$mysqlCnf__client__password"
-
-else
-
-  # Concatenate parameters into innobackupex ones
-  USEROPTIONS="--user=$MYUSER"
-  if [ ! -z "$MYPASSWD" ]; then USEROPTIONS="$USEROPTIONS --password=$MYPASSWD"; fi
-
-fi
-
-# Connection parameters:
-if [ ! -z "$MYHOST" ]; then USEROPTIONS="$USEROPTIONS --host=$MYHOST"; fi
-if [ ! -z "$MYPORT" ]; then USEROPTIONS="$USEROPTIONS --port=$MYPORT"; fi
-if [ ! -z "$MYSOCKET" ]; then USEROPTIONS="$USEROPTIONS --socket=$MYSOCKET"; fi
-
-# Full and incremental backups directories
-FULLBACKUPDIR=$BACKUPDIR/full
-INCRBACKUPDIR=$BACKUPDIR/incr
-
-# Check options before proceeding
-if [ ! -x $INNOBACKUPEXBINCMD ]; then
-  log_msg "$INNOBACKUPEXBINCMD does not exist."
-  exit 1
-fi
-
-if [ ! -d $BACKUPDIR ]; then
-  log_msg "ERROR: Backup destination folder $BACKUPDIR does not exist."
-  exit 1
-fi
-
-if [ -z "`$MYSQLADMIN $USEROPTIONS status | /bin/grep 'Uptime'`" ] ; then
-  log_msg "HALTED: MySQL does not appear to be running."
-  exit 1
-fi
-
-if ! `echo 'exit' | $MYSQL -s $USEROPTIONS` ; then
-  log_msg "HALTED: Supplied mysql username or password appears to be incorrect (not copied here for security, see script)."
-  exit 1
-fi
-
-if [ "$VERBOSE" = true ] ; then
-  # Some info output
-  echo "----------------------------"
-  echo
-  echo "$SCRIPTNAME: MySQL backup script"
-  echo "started: `/bin/date`"
-  echo
-else
-  log_msg "$SCRIPTNAME: backup started"
-fi
-
-# Create full and incr backup directories if they not exist.
-/bin/mkdir -p $FULLBACKUPDIR
-/bin/mkdir -p $INCRBACKUPDIR
-
-# Find latest full backup
-LATEST_FULL=`/usr/bin/find $FULLBACKUPDIR -mindepth 1 -maxdepth 1 -type d -printf "%P\n" | /usr/bin/sort -nr | /usr/bin/head -1`
-
-# Get latest backup last modification time
-LATEST_FULL_CREATED_AT=`/usr/bin/stat -c %Y $FULLBACKUPDIR/$LATEST_FULL`
-
-# Run an incremental backup if latest full is still valid. Otherwise, run a new full one.
-if [ "$LATEST_FULL" -a `expr $LATEST_FULL_CREATED_AT + $FULLBACKUPLIFE + 5` -ge $STARTED_AT ] ; then
-  # Create incremental backups dir if not exists.
-  TMPINCRDIR=$INCRBACKUPDIR/$LATEST_FULL
-  /bin/mkdir -p $TMPINCRDIR
-  
-  # Find latest incremental backup.
-  LATEST_INCR=`/usr/bin/find $TMPINCRDIR -mindepth 1 -maxdepth 1 -type d | /usr/bin/sort -nr | /usr/bin/head -1`
-  
-  # If this is the first incremental, use the full as base. Otherwise, use the latest incremental as base.
-  if [ ! $LATEST_INCR ] ; then
-    INCRBASEDIR=$FULLBACKUPDIR/$LATEST_FULL
-  else
-    INCRBASEDIR=$LATEST_INCR
-  fi
-  
-  log_msg "Running new incremental backup using $INCRBASEDIR as base."
-  $INNOBACKUPEXBINCMD --defaults-file=$MYCNF $DEFGROUP $USEROPTIONS --incremental $TMPINCRDIR --incremental-basedir $INCRBASEDIR > $TMPFILE 2>&1
-else
-  log_msg "Running new full backup."
-  $INNOBACKUPEXBINCMD --defaults-file=$MYCNF $DEFGROUP $USEROPTIONS $FULLBACKUPDIR > $TMPFILE 2>&1
-fi
-
-if [ -z "`/usr/bin/tail -1 $TMPFILE | /bin/grep 'completed OK!'`" ] ; then
-  if [ "$VERBOSE" = true ] ; then
-    echo "$INNOBACKUPEXBIN failed:"; echo
-    echo "---------- ERROR OUTPUT from $INNOBACKUPEXBIN ----------"
-    /bin/cat $TMPFILE
-    /bin/rm -f $TMPFILE
-  else
-    log_msg "ERROR: the backup procedure has failed. More details on: $TMPFILE"
-  fi
-  exit 1
-fi
-
-THISBACKUP=`/usr/bin/awk -- "/Backup created in directory/ { split( \\\$0, p, \"'\" ) ; print p[2] }" $TMPFILE`
-/bin/rm -f $TMPFILE
-
-log_msg "Databases backed up successfully to: $THISBACKUP"
-
-# Cleanup
-log_msg "Cleanup. Keeping only $KEEP full backups and its incrementals."
-
-AGE=$(($FULLBACKUPLIFE * $KEEP / 60))
-/usr/bin/find $FULLBACKUPDIR -maxdepth 1 -type d -mmin +$AGE -execdir echo "removing: "$FULLBACKUPDIR/{} \; -execdir rm -rf $FULLBACKUPDIR/{} \; -execdir echo "removing: "$INCRBACKUPDIR/{} \; -execdir rm -rf $INCRBACKUPDIR/{} \;
-
-log_msg "Backup completed."
+do_backup
 
 exit 0
