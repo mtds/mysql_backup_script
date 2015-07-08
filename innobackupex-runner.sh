@@ -68,7 +68,7 @@ EOF
 
 
 # Parse parameters
-while getopts ":d:f:g:u:p:H:P:S:evh" opt; do
+while getopts ":d:f:g:a:u:p:H:P:S:evh" opt; do
   case $opt in
     d )  BACKUPDIR=$OPTARG ;;
     f )  MYCNF=$OPTARG ;;
