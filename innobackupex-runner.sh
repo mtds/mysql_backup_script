@@ -39,6 +39,7 @@ MYSQLADMIN=/usr/bin/mysqladmin
 FULLBACKUPLIFE=604800 # Lifetime of the latest full backup in seconds
 KEEP=1 # Number of full backups (and its incrementals) to keep
 SCRIPTNAME=$(basename "$0")
+LOGFILE=/var/log/innobackup.log
 
 # Grab start time
 STARTED_AT=`/bin/date +%s`
@@ -95,7 +96,7 @@ log_msg () {
   if [ "$VERBOSE" = true ] ; then
     echo "$1"
   else
-    echo `/bin/date +%b' '%d' '%H:%m:%S` "$1" >> /var/log/innobackup.log
+    echo `/bin/date +%b' '%d' '%H:%m:%S` "$1" >> $LOGFILE
   fi
 }
 
