@@ -43,9 +43,9 @@ SCRIPTNAME=$(basename "$0")
 # Grab start time
 STARTED_AT=`/bin/date +%s`
 
-#############################################################################
-# Display usage message and exit
-#############################################################################
+##################################
+# Display usage message and exit #
+##################################
 usage() {
   cat <<EOF
 Usage: $SCRIPTNAME [-d backdir] [-f config] [-g group] [-e] [-a /path/auth.cnf] | ([-u username] [-p password]) [-H host] [-P port] [-S socket] [-v]
@@ -157,7 +157,7 @@ if [ ! -x $INNOBACKUPEXBINCMD ]; then
 fi
 
 if [ ! -d $BACKUPDIR ]; then
-  log_msg "Backup destination folder: $BACKUPDIR does not exist."
+  log_msg "ERROR: Backup destination folder $BACKUPDIR does not exist."
   exit 1
 fi
 
