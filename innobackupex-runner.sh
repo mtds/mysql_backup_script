@@ -31,6 +31,7 @@
 # Adding parameters in order to execute the script in a multiple MySQL instances environment
 #
 
+# The following variables can be pushed on a config file:
 INNOBACKUPEXBIN=innobackupex
 INNOBACKUPEXBINCMD=/usr/bin/$INNOBACKUPEXBIN
 TMPFILE="/tmp/innobackupex-runner.$$.tmp"
@@ -40,12 +41,11 @@ CNFAUTH=/etc/mysql/debian.cnf
 MYSQLADMIN=/usr/bin/mysqladmin
 FULLBACKUPLIFE=604800 # Lifetime of the latest full backup in seconds
 KEEP=1 # Number of full backups (and its incrementals) to keep
-SCRIPTNAME=$(basename "$0")
 LOGFILE=/var/log/innobackup.log
+
+SCRIPTNAME=$(basename "$0")
 INTERACTIVE=false # used only when credentials are provided on the command line
 
-# Grab start time
-STARTED_AT=`/bin/date +%s`
 
 ##################################
 # Display usage message and exit #
@@ -143,9 +143,12 @@ check_options() {
 # Execute the backup operations:
 do_backup() {
 
+  # Grab start time
+  local STARTED_AT=`/bin/date +%s`
+
   # Full and incremental backups directories
-  FULLBACKUPDIR=$BACKUPDIR/full
-  INCRBACKUPDIR=$BACKUPDIR/incr
+  local FULLBACKUPDIR=$BACKUPDIR/full
+  local INCRBACKUPDIR=$BACKUPDIR/incr
   
   # Check options before proceeding
   if [ ! -x $INNOBACKUPEXBINCMD ]; then
