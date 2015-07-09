@@ -31,28 +31,16 @@
 # Adding parameters in order to execute the script in a multiple MySQL instances environment
 #
 
-# The following variables can be pushed on a config file:
-INNOBACKUPEXBIN=innobackupex
-INNOBACKUPEXBINCMD=/usr/bin/$INNOBACKUPEXBIN
-TMPFILE="/tmp/innobackupex-runner.$$.tmp"
-MYSQL=/usr/bin/mysql
-MYCNF=/etc/mysql/my.cnf
-CNFAUTH=/etc/mysql/debian.cnf
-MYSQLADMIN=/usr/bin/mysqladmin
-FULLBACKUPLIFE=604800 # Lifetime of the latest full backup in seconds
-KEEP=1 # Number of full backups (and its incrementals) to keep
-LOGFILE=/var/log/innobackup.log
-
 SCRIPTNAME=$(basename "$0")
 INTERACTIVE=false # used only when credentials are provided on the command line
-
+CNFSCRIPT=/etc/default/runner.conf
 
 ##################################
 # Display usage message and exit #
 ##################################
 usage() {
   cat <<EOF
-  Usage: $SCRIPTNAME [-d backdir] [-f config.cnf] [-g group] [-a auth.cnf] | -i ([-u username] [-p password]) [-H host] [-P port] [-S socket]) [-v]
+  Usage: $SCRIPTNAME [-d backdir] [-f config.cnf] [-g group] [-a auth.cnf] | -i ([-u username] [-p password]) [-H host] [-P port] [-S socket]) | [-v]
   -d  Directory used to store database backup
   -f  Path to my.cnf database config file
   -g  Group to read from the config file
@@ -90,6 +78,31 @@ read_credentials () {
 
   # Concatenate the parameters for innobackupex:
   USEROPTIONS="--user=$mysqlCnf__client__user --password=$mysqlCnf__client__password"
+}
+
+
+# Extract the options from the configuration file:
+read_config () {
+  # Source the parser:
+  . /opt/scripts/read_ini.sh
+
+  # Call the parser function over the MySQL cnf file:
+  read_ini -p scriptCnf $CNFSCRIPT
+
+  # Script options:
+  INNOBACKUPEXBINCMD="$scriptCnf__config__innobackupexbincmd"
+  TMPFILE="$scriptCnf__config__tmpfile"
+  LOGFILE="$scriptCnf__config__logfile"
+
+  # MySQL configs and binaries:
+  MYSQL="$scriptCnf__config__mysql"
+  MYCNF="$scriptCnf__config__mycnf"
+  CNFAUTH="$scriptCnf__config__cnfauth"
+  MYSQLADMIN="$scriptCnf__config__mysqladmin"
+
+  # Backup configs:
+  FULLBACKUPLIFE="$scriptCnf__config__fullbackuplife"
+  KEEP="$scriptCnf__config__keep"
 }
 
 
@@ -212,8 +225,8 @@ do_backup() {
   
   if [ -z "`/usr/bin/tail -1 $TMPFILE | /bin/grep 'completed OK!'`" ] ; then
     if [ "$VERBOSE" = true ] ; then
-      echo "$INNOBACKUPEXBIN failed:"; echo
-      echo "---------- ERROR OUTPUT from $INNOBACKUPEXBIN ----------"
+      echo "$INNOBACKUPEXBINCMD failed:"; echo
+      echo "---------- ERROR OUTPUT from $INNOBACKUPEXBINCMD ----------"
       /bin/cat $TMPFILE
       /bin/rm -f $TMPFILE
     else
@@ -247,6 +260,8 @@ if [ "$EUID" -ne 0 ]; then
   echo "Please run $SCRIPTNAME as root."
   exit 1
 fi
+
+read_config
 
 # Parse cmd line parameters:
 while getopts ":d:f:g:a:u:p:H:P:S:ivh" opt; do
