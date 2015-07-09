@@ -40,7 +40,7 @@ CNFSCRIPT=/etc/default/runner.conf
 ##################################
 usage() {
   cat <<EOF
-  Usage: $SCRIPTNAME [-d backdir] [-f config.cnf] [-g group] [-a auth.cnf] | -i ([-u username] [-p password]) [-H host] [-P port] [-S socket]) | [-v]
+  Usage: $SCRIPTNAME -d backdir [-f config.cnf] [-g group] [-a auth.cnf] | -i -u username [-p password] [-H host] [-P port] [-S socket] | [-v] | [-h]
   -d  Directory used to store database backup
   -f  Path to my.cnf database config file
   -g  Group to read from the config file
@@ -153,7 +153,7 @@ check_options() {
 }
 
 
-# Execute the backup operations:
+# Execute the backup procedure:
 do_backup() {
 
   # Grab start time
@@ -261,6 +261,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Read the configuration parameters from the config file.
 read_config
 
 # Parse cmd line parameters:
@@ -287,8 +288,10 @@ while getopts ":d:f:g:a:u:p:H:P:S:ivh" opt; do
   esac
 done
 
+# Verify the options passed through the command line.
 check_options
 
+# Execute the backup procedure.
 do_backup
 
 exit 0
