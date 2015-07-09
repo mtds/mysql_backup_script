@@ -40,7 +40,7 @@ CNFSCRIPT=/etc/default/runner.conf
 ##################################
 usage() {
   cat <<EOF
-  Usage: $SCRIPTNAME -d backdir [-f config.cnf] [-g group] [-a auth.cnf] | -i -u username [-p password] [-H host] [-P port] [-S socket] | [-v] | [-h]
+  Usage: $SCRIPTNAME -d backdir [-f config.cnf] [-g group] [-a auth.cnf] | -i -u username [-p password] [-H host] [-P port] [-S socket] [-v] | [-h]
   -d  Directory used to store database backup
   -f  Path to my.cnf database config file
   -g  Group to read from the config file
@@ -235,7 +235,7 @@ do_backup() {
     exit 1
   fi
   
-  THISBACKUP=`/usr/bin/awk -- "/Backup created in directory/ { split( \\\$0, p, \"'\" ) ; print p[2] }" $TMPFILE`
+  local THISBACKUP=`/usr/bin/awk -- "/Backup created in directory/ { split( \\\$0, p, \"'\" ) ; print p[2] }" $TMPFILE`
   /bin/rm -f $TMPFILE
   
   log_msg "Databases backed up successfully to: $THISBACKUP"
@@ -243,7 +243,7 @@ do_backup() {
   # Cleanup
   log_msg "Cleanup. Keeping only $KEEP full backups and its incrementals."
   
-  AGE=$(($FULLBACKUPLIFE * $KEEP / 60))
+  local AGE=$(($FULLBACKUPLIFE * $KEEP / 60))
 
   # Add the 'echo' only if VERBOSE is true:
   /usr/bin/find $FULLBACKUPDIR -maxdepth 1 -type d -mmin +$AGE -execdir echo "removing: "$FULLBACKUPDIR/{} \; -execdir rm -rf $FULLBACKUPDIR/{} \; -execdir echo "removing: "$INCRBACKUPDIR/{} \; -execdir rm -rf $INCRBACKUPDIR/{} \;
