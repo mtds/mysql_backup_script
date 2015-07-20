@@ -71,7 +71,8 @@ log_msg () {
 # Extract MySQL credentials (user/password) from a CNF file:
 read_credentials () {
   # Source the parser:
-  . /opt/scripts/read_ini.sh
+  local DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+  source $DIR/read_ini.sh
 
   # Call the parser function over the MySQL cnf file:
   read_ini -p mysqlCnf $CNFAUTH
@@ -84,7 +85,8 @@ read_credentials () {
 # Extract the options from the configuration file:
 read_config () {
   # Source the parser:
-  . /opt/scripts/read_ini.sh
+  local DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+  source $DIR/read_ini.sh
 
   # Call the parser function over the MySQL cnf file:
   read_ini -p scriptCnf $CNFSCRIPT
