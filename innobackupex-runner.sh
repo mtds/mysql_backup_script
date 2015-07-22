@@ -33,7 +33,7 @@
 
 SCRIPTNAME=$(basename "$0")
 INTERACTIVE=false # used only when credentials are provided on the command line
-CNFSCRIPT=/etc/default/runner.conf
+CNFSCRIPT=/opt/scripts/mysql_backup/etc/runner.conf
 
 ##################################
 # Display usage message and exit #
