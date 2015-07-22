@@ -10,16 +10,18 @@
 # ----
 # This script is derived from: https://gist.github.com/bleleve/5605430#file-innobackupex-runner-sh
 #
+# (C)2015 Matteo Dessalvi @ GSI (HPC)
+#
 # => Modifications:
-# - Default shell changed to /bin/bash.
-# - Renamed some variables
-# - All the external commands are invoked with the full path.
+#    - Default shell changed to /bin/bash.
+#    - Renamed some variables.
+#    - All the external commands are invoked with the full path.
+#    - Splitted the script in multiple functions.
 #
 # => Enhancements:
-# - Reading username/password from an external file.
-# - Added a verbose mode: when the script is not used 
-#   interactively all the output/error messages are
-#   logged into a file.
+#    - Parameters can be read from a config file (added a special INI parser).
+#    - Logging: when the script is not used interactively all the output/error 
+#      messages are logged into a file.
 #
 # ------------------------------------------------------------------------------------------
 #
@@ -27,7 +29,7 @@
 # This script is provided as-is; no liability can be accepted for use.
 # You are free to modify and reproduce so long as this attribution is preserved.
 #
-# (C)2013 Benoît LELEVÉ @ Exsellium (www.exsellium.com)
+# (C)2013 Benoit LELEVE' @ Exsellium (www.exsellium.com)
 # Adding parameters in order to execute the script in a multiple MySQL instances environment
 #
 
