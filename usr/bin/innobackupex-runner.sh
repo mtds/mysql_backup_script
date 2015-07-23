@@ -120,8 +120,8 @@ check_options() {
   fi
 
   if [ ! -d $BACKUPDIR ]; then
-    log_msg "ERROR: Backup destination folder $BACKUPDIR does not exist."
-    exit 1
+    /bin/mkdir $BACKUPDIR
+    log_msg "INFO: Backup destination folder $BACKUPDIR created."
   fi
 
   if [ ! -w "$BACKUPDIR" ]; then
