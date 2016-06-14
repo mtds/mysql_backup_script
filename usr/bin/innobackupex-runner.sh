@@ -113,6 +113,7 @@ read_config () {
 # Check if the option arguments provided are correct:
 check_options() {
 
+
   # Verify if the backup directory is provided/available/writable:
   if [ -z "$BACKUPDIR" ]; then
     log_msg "ERROR: Backup directory is required. For help, type: $SCRIPTNAME -h."
@@ -138,7 +139,7 @@ check_options() {
   # If username and password are provided with the '-u' and '-p' options on the cmd line:
   if [ "$INTERACTIVE" = true ]; then
      if [ -z "$MYUSER"]; then
-       log_msg "Database username is required. For help, type: $SCRIPTNAME -h"
+       log_msg "ERROR: Database username is required. For help, type: $SCRIPTNAME -h"
        exit 1
      else
        # Concatenate parameters into innobackupex ones:
@@ -149,11 +150,29 @@ check_options() {
     read_credentials # We'll get MySQL credentials from a CNF file.
   fi
 
-  # Connection parameters: if none of the following are provided the script we'll use
+  # Connection parameters: if none of the following are provided then the script will use
   # the ones that comes from /etc/mysql/my.cnf.
   if [ ! -z "$MYHOST" ]; then USEROPTIONS="$USEROPTIONS --host=$MYHOST"; fi
   if [ ! -z "$MYPORT" ]; then USEROPTIONS="$USEROPTIONS --port=$MYPORT"; fi
   if [ ! -z "$MYSOCKET" ]; then USEROPTIONS="$USEROPTIONS --socket=$MYSOCKET"; fi
+}
+
+
+# Check if there's enough free disk space for the backup:
+check_free_space() {
+  # Check space occupied by the DBs on MySQL:
+  local mysqldb_size=`/usr/bin/mysql $USEROPTIONS -NB -e "SELECT Round(Sum(data_length + index_length) / 1024 / 1024, 1) FROM information_schema.TABLES;"`
+  mysqldb_size=`/bin/echo "($mysqldb_size+0.5)/1" | /usr/bin/bc` # Roundup (size in MB)
+
+  # Check space avalaible under the backup directory:
+  local db_dir_size=`/bin/df -l $BACKUPDIR | /bin/grep -vE ^Filesystem | /usr/bin/awk '{print $4}'`
+  db_dir_size=$((db_dir_size / 1024)) # Convert in MB + Roundup
+
+  # If the MySQL DBs size exceed the available disk space under the backup dir:
+  if [ $mysqldb_size -ge $db_dir_size ]; then
+    log_msg "HALTED: Not enough disk space available under $BACKUPDIR for the backup procedure."
+    exit 1
+  fi
 }
 
 
@@ -169,15 +188,20 @@ do_backup() {
   
   # Check options before proceeding
   if [ ! -x $INNOBACKUPEXBINCMD ]; then
-    log_msg "$INNOBACKUPEXBINCMD does not exist."
+    log_msg "ERROR: $INNOBACKUPEXBINCMD does not exist."
     exit 1
   fi
-  
+
+  # Check free disk space:
+  check_free_space
+
+  # Check if MySQL is running:
   if [ -z "`$MYSQLADMIN $USEROPTIONS status | /bin/grep 'Uptime'`" ] ; then
     log_msg "HALTED: MySQL does not appear to be running."
     exit 1
   fi
-  
+ 
+  # Check options: 
   if ! `echo 'exit' | $MYSQL -s $USEROPTIONS` ; then
     log_msg "HALTED: Supplied mysql username or password appears to be incorrect (not copied here for security, see script)."
     exit 1
