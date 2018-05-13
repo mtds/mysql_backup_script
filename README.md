@@ -57,11 +57,10 @@ In order to read an INI configuration file, this repository is also including th
 ## Define a CRON entry
 
 Run the script every four hours after defining an entry under ``/etc/cron.d``:
-
-``
+```
 #
 # Make MySQL backups (full/incremental) every four hours:
 #
 0 */4 * * * root /usr/bin/innobackupex-runner.sh -d /opt/db_backups
-``
+```
 
