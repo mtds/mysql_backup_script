@@ -4,9 +4,13 @@ The main purpose of this shell script is to provide a wrapper over the [Xtrabacu
 
 It was mainly tested on **Debian based** Linux distributions. 
 
+Scipts provided:
+* ``innobackupex-runner.sh``:  full/incremental MySQL backups.
+* ``innobackupex-restore.sh``: restore script (Note: it is intended to be executed __interactively__).
+
 ## How it works
 
-It can read a configuration file in INI format (see example under the ``etc`` subdirectory of this repo or it can be used interactively through multiple command line options. *Note* that this script has to be executed with __root__ privileges.
+``innobackupex-runner.sh`` can read a configuration file in INI format (see example under the ``etc`` subdirectory of this repo or it can be used interactively through multiple command line options. *Note* that this script has to be executed with __root__ privileges.
 
 If a configuration file is present, the only mandatory option on the command line is ``-d`` which is used to specify where is the directory to store the backup files.
 
@@ -14,7 +18,7 @@ In the configuration file the two most important entries are ``mycnf`` (which po
 
 ## Command Line Options
 
-The following is a complete list of the cmd line options.
+The following is a complete list of the cmd line options for the backup script:
 
 ``
 -d  Directory used to store database backup 
