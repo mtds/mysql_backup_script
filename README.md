@@ -19,21 +19,19 @@ In the configuration file the two most important entries are ``mycnf`` (which po
 ## Command Line Options
 
 The following is a complete list of the cmd line options for the backup script:
+* ``-d``  Directory used to store database backup 
+* ``-a``  Path of a CNF file containing admin credentials 
+* ``-f``  Path to my.cnf database config file 
+* ``-g``  Group to read from the config file 
+* ``-u``  Username used when connecting to the database 
+* ``-p``  Password used when connecting to the database 
+* ``-i``  Username/Password will be provided on the cmd line 
+* ``-H``  Host used when connecting to the database 
+* ``-P``  Port number used when connecting to the database 
+* ``-S``  Socket used when connecting to the database 
+* ``-v``  Verbose mode: print more output messages 
+* ``-h``  Display basic help
 
-``
--d  Directory used to store database backup 
--a  Path of a CNF file containing admin credentials 
--f  Path to my.cnf database config file 
--g  Group to read from the config file 
--u  Username used when connecting to the database 
--p  Password used when connecting to the database 
--i  Username/Password will be provided on the cmd line 
--H  Host used when connecting to the database 
--P  Port number used when connecting to the database 
--S  Socket used when connecting to the database 
--v  Verbose mode: print more output messages 
--h  Display basic help
-``
 ## Origin of this script
 
 This script is originally derived from the one available through this [Github gist](https://gist.github.com/bleleve/5605430#file-innobackupex-runner-sh).
